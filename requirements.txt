@@ -1,3 +1,4 @@
 matplotlib
 dwave-ocean-sdk
 jupyter
+dwave-hybrid
