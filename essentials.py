@@ -318,7 +318,8 @@ class SA(object):
             DWaveSampler(solver={'lower_noise': True, 'qpu': True}), embedding
             )
             q_response = optimize_qannealer(fixed_sampler, Q, anneal_params)
-            error += is_this_an_answer(q_response.samples()[0], G, net_start, net_end)#a function to compare the best_q_answer vs the correct answer 
+            error += is_this_an_answer(q_response.samples()[0], G, net_start, net_end)#a function to compare the best_q_answer vs the correct answer
+            self.cost_ = error 
     def accept_prob(self,c_old,c_new):
         """Computes the acceptance probability.
         Returns
