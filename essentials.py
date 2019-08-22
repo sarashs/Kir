@@ -295,15 +295,10 @@ class SA(object):
                          if sol_ in list_of_integers:
                              break
             self.sol_[j]=sol_
-    def cost_function(self):
+    def cost_function(self, G, embedding):
         error = 0
-        G = RectGridGraph(self.graph_size, self.graph_size) #create the graph only once
         net_start = [(0,0)]
         net_end = [(0,0)]
-        Q=create_qubo(G, net_start, net_end) #in order to produce the embedding we will run this once
-        dwave_sampler = DWaveSampler(solver={'lower_noise': True, 'qpu': True})
-        A = dwave_sampler.edgelist
-        embedding, _ = find_embedding_minorminer(Q, A) #create the embedding only once
         Q_params = {}
         anneal_params = {}
         for i in self.sol_.keys():
@@ -336,7 +331,16 @@ class SA(object):
             ap = np.exp(-(c_new-c_old)/self.T)
         return ap
     def anneal(self):
-        self.cost_function()
+	###########
+        G = RectGridGraph(self.graph_size, self.graph_size) #create the graph only once
+        net_start = [(0,0)]
+        net_end = [(0,0)]
+        Q=create_qubo(G, net_start, net_end) #in order to produce the embedding we will run this once
+        dwave_sampler = DWaveSampler(solver={'lower_noise': True, 'qpu': True})
+        A = dwave_sampler.edgelist
+        embedding, _ = find_embedding_minorminer(Q, A) #create the embedding only once
+	###########
+        self.cost_function(G, embedding)
         best_sol = self.sol_
         cost_old = self.cost_
         self.costs = [cost_old]
@@ -348,16 +352,16 @@ class SA(object):
             i = 1
             while i <= self.max_iter:
                 self.param_generator()
-                self.cost_function()
+                self.cost_function(G, embedding)
                 cost_new = self.cost_
                 ap = self.accept_prob(cost_old, cost_new)
                 if ap > random.random():
                     best_sol = self.sol_
                     cost_old = cost_new
-                    self.costs.append(cost_new)
-                    self.sols.append(best_sol)
                 else:
                     self.cost_ = cost_old
                     self.sol_ = best_sol
                 i += 1
+            self.costs.append(self.cost_)
+            self.sols.append(self.sol_)
             self.T = self.T*self.alpha

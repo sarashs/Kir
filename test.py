@@ -7,3 +7,4 @@ a=SA(3, params={'weight_objective': [1, 0, 2, 0], 'weight_end': [1, 0, 2, 0],
                  T=1, T_min=0.00001, alpha=0.8, max_iter=5)
 
 a.anneal()
+print(a.costs)
