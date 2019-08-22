@@ -1,4 +1,12 @@
 matplotlib
 dwave-ocean-sdk
 jupyter
+<<<<<<< HEAD
+=======
+
+For Hybrid:
+
+hybrid
+dimod
+>>>>>>> 5287cdc7abff437a8a43c39c97edb3a92a2e9894
 dwave-hybrid
