@@ -4,6 +4,7 @@ import numpy as np
 import random
 from copy import deepcopy
 from itertools import combinations_with_replacement as cwr
+import pickle
 
 import dwave_networkx as dnx
 import networkx as nx
@@ -12,6 +13,15 @@ from dwave.system.samplers import DWaveSampler
 from dwave.system.composites import FixedEmbeddingComposite
 import hybrid
 import dimod
+
+#for garbace collection
+import gc
+
+####
+def save_data(data_dict,name):
+    pickle_out = open(name+".pickle","wb")
+    pickle.dump(data_dict, pickle_out)
+    pickle_out.close()
 
 ####
 
@@ -272,6 +282,7 @@ class SA(object):
         self.sol_= {key: val[0] for key, val in params.items()}
         self.sols = []
         self.energies = {}
+        self.sampler = None
     def param_generator(self):
         """Generates the next solution.
         Returns
@@ -295,7 +306,12 @@ class SA(object):
                          if sol_ in list_of_integers:
                              break
             self.sol_[j]=sol_
-    def cost_function(self, G, embedding):
+    def global_sampler(self, embedding):
+        fixed_sampler = FixedEmbeddingComposite(
+            DWaveSampler(solver={'lower_noise': True, 'qpu': True}), embedding
+            )
+        return fixed_sampler
+    def cost_function(self, G, fixed_sampler):
         error = 0
         net_start = [(0,0)]
         net_end = [(0,0)]
@@ -314,12 +330,12 @@ class SA(object):
                 net_start = random.choice(list(G.nodes))
                 net_end = random.choice(list(G.nodes))
             Q=create_qubo(G, [net_start], [net_end], Q_params)
-            fixed_sampler = FixedEmbeddingComposite(
-            DWaveSampler(solver={'lower_noise': True, 'qpu': True}), embedding
-            )
             q_response = optimize_qannealer(fixed_sampler, Q, anneal_params)
             error += is_this_an_answer(q_response.samples()[0], G, net_start, net_end)#a function to compare the best_q_answer vs the correct answer
-            self.cost_ = error 
+        self.cost_ = error
+        ## memory improvement
+        garbages = gc.collect()
+       
     def accept_prob(self,c_old,c_new):
         """Computes the acceptance probability.
         Returns
@@ -340,20 +356,26 @@ class SA(object):
         dwave_sampler = DWaveSampler(solver={'lower_noise': True, 'qpu': True})
         A = dwave_sampler.edgelist
         embedding, _ = find_embedding_minorminer(Q, A) #create the embedding only once
+    #define global sampler here
+        fixed_sampler = self.global_sampler(embedding)
 	###########
-        self.cost_function(G, embedding)
+        self.cost_function(G, fixed_sampler)
         best_sol = self.sol_
         cost_old = self.cost_
         self.costs = [cost_old]
         self.sols = [best_sol]
         while self.T > self.T_min:
-            ##
-            print(self.T)
+            ## memory improvement
+            garbages = gc.collect()
+            print([self.T, garbages])
             ##
             i = 1
             while i <= self.max_iter:
+                ## memory improvement
+                #garbages = gc.collect()
+                ######
                 self.param_generator()
-                self.cost_function(G, embedding)
+                self.cost_function(G, fixed_sampler)
                 cost_new = self.cost_
                 ap = self.accept_prob(cost_old, cost_new)
                 if ap > random.random():
