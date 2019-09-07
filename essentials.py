@@ -290,12 +290,13 @@ class SA(object):
         self : object
         """
         for j in self.sol_.keys():
+            sol_ = self.sol_[j]
             if self.params[j][1]==self.params[j][2]: # in order to fix a certain parameter
                 sol_ = self.params[j][1]
             else:
                  if self.params[j][3] == 0: # if the parameter isn't an integer
                      while True:
-                         sol_ = self.params[j][0] + (0.5-random.random()) # new parameter between -0.5,0.5
+                         sol_ += (0.5-random.random()) # new parameter between -0.5,0.5
                          if sol_ > self.params[j][1] and sol_ < self.params[j][2]: #see if the new parameter is within range
                              break
                  else:
@@ -305,7 +306,7 @@ class SA(object):
                          sol_ += random.choice([1, -1])
                          if sol_ in list_of_integers:
                              break
-            self.sol_[j]=sol_
+            self.sol_[j] = sol_
     def global_sampler(self, embedding):
         fixed_sampler = FixedEmbeddingComposite(
             DWaveSampler(solver={'lower_noise': True, 'qpu': True}), embedding
@@ -331,7 +332,8 @@ class SA(object):
                 net_end = random.choice(list(G.nodes))
             Q=create_qubo(G, [net_start], [net_end], Q_params)
             q_response = optimize_qannealer(fixed_sampler, Q, anneal_params)
-            error += is_this_an_answer(q_response.samples()[0], G, net_start, net_end)#a function to compare the best_q_answer vs the correct answer
+            error -= is_this_an_answer(q_response.samples()[0], G, net_start, net_end)#a function to compare the best_q_answer vs the correct answer
+            #print(error)
         self.cost_ = error
         ## memory improvement
         garbages = gc.collect()
@@ -366,8 +368,9 @@ class SA(object):
         self.sols = [best_sol]
         while self.T > self.T_min:
             ## memory improvement
-            garbages = gc.collect()
-            print([self.T, garbages])
+            #garbages = gc.collect()
+            ##seems no longer tobe necessary
+            #print(self.T)
             ##
             i = 1
             while i <= self.max_iter:
@@ -379,12 +382,13 @@ class SA(object):
                 cost_new = self.cost_
                 ap = self.accept_prob(cost_old, cost_new)
                 if ap > random.random():
-                    best_sol = self.sol_
+                    best_sol = self.sol_.copy()
                     cost_old = cost_new
+                    print(best_sol)
                 else:
                     self.cost_ = cost_old
-                    self.sol_ = best_sol
+                    self.sol_ = best_sol.copy()
                 i += 1
-            self.costs.append(self.cost_)
-            self.sols.append(self.sol_)
+            self.costs.append(cost_old)
+            self.sols.append(best_sol)
             self.T = self.T*self.alpha
