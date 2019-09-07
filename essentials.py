@@ -218,18 +218,23 @@ def check_against_exact(ans,exact_min_energy_sols):
 def is_this_an_answer(ans, G, net_start, net_end): #q_response.samples()[0]
     edge_set = G.qubo_answer2node_pairs(ans)
     edge_end = net_start[0]
+    path=[]
     out = 0
+    no_chain_break_flag = True
     for j in range(len(net_end)):
-        while edge_set:
-            for i, item in enumerate(edge_set):
+        while no_chain_break_flag:
+            no_chain_break_flag = False
+            for item in edge_set:
                 if edge_end == item[0]:
+                    no_chain_break_flag = True
                     edge_end = item[1]
-                    edge_set.pop(i)
+                    path.append(item)
                     break
-                else:
-                    edge_set=[]
-            if edge_end == net_end[j]:
+            if (edge_end == net_end[j]) and (len(path) == len(edge_set)):
                 out += 1
+                break
+            elif edge_end == net_end[j]:
+                out += 0.5
                 break
     return out
 
@@ -326,7 +331,7 @@ class SA(object):
         anneal_params['num_reads'] = np.floor(1000000/anneal_params['annealing_time'])
         if anneal_params['num_reads'] > 10000:
             anneal_params['num_reads'] = 10000
-        for i in range(self.graph_size): #we try self.graph_size number of sets of start and end nodes
+        for i in range(int(np.ceil(self.graph_size**2/2))): #we trying number of sets of start and end nodes
             while net_start == net_end:
                 net_start = random.choice(list(G.nodes))
                 net_end = random.choice(list(G.nodes))
@@ -370,7 +375,7 @@ class SA(object):
             ## memory improvement
             #garbages = gc.collect()
             ##seems no longer tobe necessary
-            #print(self.T)
+            print(self.T)
             ##
             i = 1
             while i <= self.max_iter:
@@ -384,7 +389,7 @@ class SA(object):
                 if ap > random.random():
                     best_sol = self.sol_.copy()
                     cost_old = cost_new
-                    print(best_sol)
+                    #print(best_sol)
                 else:
                     self.cost_ = cost_old
                     self.sol_ = best_sol.copy()
