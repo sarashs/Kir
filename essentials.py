@@ -328,9 +328,11 @@ class SA(object):
                 Q_params[i] = self.sol_[i]
             elif i in list_of_anneal_params:
                 anneal_params[i] = self.sol_[i]
-        anneal_params['num_reads'] = np.floor(1000000/anneal_params['annealing_time'])
+        anneal_params['num_reads'] = int(np.floor(999000/anneal_params['annealing_time']))
+        #999000 due to Dwave's own bug
         if anneal_params['num_reads'] > 10000:
             anneal_params['num_reads'] = 10000
+        #print([anneal_params['annealing_time'], anneal_params['num_reads']])
         for i in range(int(np.ceil(self.graph_size**2/2))): #we trying number of sets of start and end nodes
             while net_start == net_end:
                 net_start = random.choice(list(G.nodes))
