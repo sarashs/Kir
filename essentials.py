@@ -4,6 +4,7 @@ import numpy as np
 import random
 from copy import deepcopy
 from itertools import combinations_with_replacement as cwr
+import pickle
 
 import dwave_networkx as dnx
 import networkx as nx
@@ -12,6 +13,15 @@ from dwave.system.samplers import DWaveSampler
 from dwave.system.composites import FixedEmbeddingComposite
 import hybrid
 import dimod
+
+#for garbace collection
+import gc
+
+####
+def save_data(data_dict,name):
+    pickle_out = open(name+".pickle","wb")
+    pickle.dump(data_dict, pickle_out)
+    pickle_out.close()
 
 ####
 
@@ -208,18 +218,23 @@ def check_against_exact(ans,exact_min_energy_sols):
 def is_this_an_answer(ans, G, net_start, net_end): #q_response.samples()[0]
     edge_set = G.qubo_answer2node_pairs(ans)
     edge_end = net_start[0]
+    path=[]
     out = 0
+    no_chain_break_flag = True
     for j in range(len(net_end)):
-        while edge_set:
-            for i, item in enumerate(edge_set):
+        while no_chain_break_flag:
+            no_chain_break_flag = False
+            for item in edge_set:
                 if edge_end == item[0]:
+                    no_chain_break_flag = True
                     edge_end = item[1]
-                    edge_set.pop(i)
+                    path.append(item)
                     break
-                else:
-                    edge_set=[]
-            if edge_end == net_end[j]:
+            if (edge_end == net_end[j]) and (len(path) == len(edge_set)):
                 out += 1
+                break
+            elif edge_end == net_end[j]:
+                out += 0.5
                 break
     return out
 
@@ -272,6 +287,7 @@ class SA(object):
         self.sol_= {key: val[0] for key, val in params.items()}
         self.sols = []
         self.energies = {}
+        self.sampler = None
     def param_generator(self):
         """Generates the next solution.
         Returns
@@ -279,12 +295,13 @@ class SA(object):
         self : object
         """
         for j in self.sol_.keys():
+            sol_ = self.sol_[j]
             if self.params[j][1]==self.params[j][2]: # in order to fix a certain parameter
                 sol_ = self.params[j][1]
             else:
                  if self.params[j][3] == 0: # if the parameter isn't an integer
                      while True:
-                         sol_ = self.params[j][0] + (0.5-random.random()) # new parameter between -0.5,0.5
+                         sol_ += (0.5-random.random()) # new parameter between -0.5,0.5
                          if sol_ > self.params[j][1] and sol_ < self.params[j][2]: #see if the new parameter is within range
                              break
                  else:
@@ -294,8 +311,13 @@ class SA(object):
                          sol_ += random.choice([1, -1])
                          if sol_ in list_of_integers:
                              break
-            self.sol_[j]=sol_
-    def cost_function(self, G, embedding):
+            self.sol_[j] = sol_
+    def global_sampler(self, embedding):
+        fixed_sampler = FixedEmbeddingComposite(
+            DWaveSampler(solver={'lower_noise': True, 'qpu': True}), embedding
+            )
+        return fixed_sampler
+    def cost_function(self, G, fixed_sampler):
         error = 0
         net_start = [(0,0)]
         net_end = [(0,0)]
@@ -306,19 +328,23 @@ class SA(object):
                 Q_params[i] = self.sol_[i]
             elif i in list_of_anneal_params:
                 anneal_params[i] = self.sol_[i]
-        anneal_params['num_reads'] = np.floor(1000000/anneal_params['annealing_time'])
+        anneal_params['num_reads'] = int(np.floor(999000/anneal_params['annealing_time']))
+        #999000 due to Dwave's own bug
         if anneal_params['num_reads'] > 10000:
             anneal_params['num_reads'] = 10000
-        for i in range(self.graph_size): #we try self.graph_size number of sets of start and end nodes
+        #print([anneal_params['annealing_time'], anneal_params['num_reads']])
+        for i in range(int(np.ceil(self.graph_size**2/2))): #we trying number of sets of start and end nodes
             while net_start == net_end:
                 net_start = random.choice(list(G.nodes))
                 net_end = random.choice(list(G.nodes))
             Q=create_qubo(G, [net_start], [net_end], Q_params)
-            fixed_sampler = FixedEmbeddingComposite(
-            DWaveSampler(solver={'lower_noise': True, 'qpu': True}), embedding
-            )
             q_response = optimize_qannealer(fixed_sampler, Q, anneal_params)
-            error += is_this_an_answer(q_response.samples()[0], G, net_start, net_end)#a function to compare the best_q_answer vs the correct answer 
+            error -= is_this_an_answer(q_response.samples()[0], G, net_start, net_end)#a function to compare the best_q_answer vs the correct answer
+            #print(error)
+        self.cost_ = error
+        ## memory improvement
+        garbages = gc.collect()
+       
     def accept_prob(self,c_old,c_new):
         """Computes the acceptance probability.
         Returns
@@ -339,29 +365,37 @@ class SA(object):
         dwave_sampler = DWaveSampler(solver={'lower_noise': True, 'qpu': True})
         A = dwave_sampler.edgelist
         embedding, _ = find_embedding_minorminer(Q, A) #create the embedding only once
+    #define global sampler here
+        fixed_sampler = self.global_sampler(embedding)
 	###########
-        self.cost_function(G, embedding)
+        self.cost_function(G, fixed_sampler)
         best_sol = self.sol_
         cost_old = self.cost_
         self.costs = [cost_old]
         self.sols = [best_sol]
         while self.T > self.T_min:
-            ##
+            ## memory improvement
+            #garbages = gc.collect()
+            ##seems no longer tobe necessary
             print(self.T)
             ##
             i = 1
             while i <= self.max_iter:
+                ## memory improvement
+                #garbages = gc.collect()
+                ######
                 self.param_generator()
-                self.cost_function(G, embedding)
+                self.cost_function(G, fixed_sampler)
                 cost_new = self.cost_
                 ap = self.accept_prob(cost_old, cost_new)
                 if ap > random.random():
-                    best_sol = self.sol_
+                    best_sol = self.sol_.copy()
                     cost_old = cost_new
+                    #print(best_sol)
                 else:
                     self.cost_ = cost_old
-                    self.sol_ = best_sol
+                    self.sol_ = best_sol.copy()
                 i += 1
-            self.costs.append(self.cost_)
-            self.sols.append(self.sol_)
+            self.costs.append(cost_old)
+            self.sols.append(best_sol)
             self.T = self.T*self.alpha
