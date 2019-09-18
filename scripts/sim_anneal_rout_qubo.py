@@ -1,4 +1,4 @@
-from essentials import *
+from refactor.essential import SA, save_data
 
 a=SA(3, params={'weight_objective': [1, 0, 2, 0], 'weight_end': [1, 0, 2, 0],
                  'weight_start': [1, 0, 2, 0] ,'weight_others': [1, 0, 2, 0],
