@@ -8,7 +8,6 @@ import pickle
 
 import dwave_networkx as dnx
 import networkx as nx
-import minorminer
 from dwave.system.samplers import DWaveSampler
 from dwave.system.composites import FixedEmbeddingComposite
 import hybrid
@@ -16,6 +15,8 @@ import dimod
 
 #for garbace collection
 import gc
+
+from qpr.quantum_utils import find_embedding_minorminer
 
 ####
 def save_data(data_dict,name):
@@ -151,22 +152,6 @@ def create_qubo(G, net_start, net_end, params={'weight_objective': 1, 'weight_en
 
 #####
 
-def longest_chain_in_embed(e):
-    return np.max([len(i) for i in e.values()])
-
-def find_embedding_minorminer(Q, A, num_tries=100):
-    best_embedding = None
-    best_chain_len = np.inf
-
-    for i in range(num_tries):
-        e = minorminer.find_embedding(Q, A)
-        if e: #to guarantee an embedding is produced
-            chain_len = longest_chain_in_embed(e)
-            if chain_len < best_chain_len:
-                best_embedding = e
-                best_chain_len = chain_len
-
-    return best_embedding, best_chain_len  
 
 #####
 
@@ -240,8 +225,6 @@ def is_this_an_answer(ans, G, net_start, net_end): #q_response.samples()[0]
 
 #####
 
-list_of_qubo_params = ['weight_objective', 'weight_end', 'weight_start', 'weight_others', 'weight_and']
-list_of_anneal_params = ['num_reads', 'annealing_time', 'chain_strength']
 class SA(object):
     """ Simulated Annealing optimizer.
     Parameters
@@ -270,6 +253,12 @@ class SA(object):
         historical data on the best solution
         format: sols= [{'param_#': value}]
     """
+    list_of_qubo_params = [
+        'weight_objective', 'weight_end', 'weight_start', 'weight_others',
+        'weight_and'
+    ]
+    list_of_anneal_params = ['num_reads', 'annealing_time', 'chain_strength']
+
     def __init__(self, graph_size, params={'weight_objective': [1, 0, 2, 0], 'weight_end': [1, 0, 2, 0],
                                            'weight_start': [1, 0, 2, 0] ,'weight_others': [1, 0, 2, 0],
                                            'weight_and': [6, 4, 15, 0],
@@ -324,9 +313,9 @@ class SA(object):
         Q_params = {}
         anneal_params = {}
         for i in self.sol_.keys():
-            if i in list_of_qubo_params:
+            if i in self.list_of_qubo_params:
                 Q_params[i] = self.sol_[i]
-            elif i in list_of_anneal_params:
+            elif i in self.list_of_anneal_params:
                 anneal_params[i] = self.sol_[i]
         anneal_params['num_reads'] = int(np.floor(999000/anneal_params['annealing_time']))
         #999000 due to Dwave's own bug
