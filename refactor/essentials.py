@@ -238,7 +238,7 @@ class SA(object):
     max_iter: int
         maximum number of iterations per temperature.
     params : dictionary 
-        format: params= {'param_#':[init_value, min, max, integer_flag],...}
+        format: params= {'param_#':[init_value, min, max, integer_flag, parameter_change_weight],...}
     
     Attributes
     --------------
@@ -259,10 +259,10 @@ class SA(object):
     ]
     list_of_anneal_params = ['num_reads', 'annealing_time', 'chain_strength']
 
-    def __init__(self, graph_size, params={'weight_objective': [1, 0, 2, 0], 'weight_end': [1, 0, 2, 0],
-                                           'weight_start': [1, 0, 2, 0] ,'weight_others': [1, 0, 2, 0],
-                                           'weight_and': [6, 4, 15, 0],
-                                           'chain_strength': [7, 4, 15, 0], 'annealing_time': [99, 10, 10000, 1]
+    def __init__(self, graph_size, params={'weight_objective': [1, 0, 2, 0, 0.1], 'weight_end': [1, 0, 2, 0, 0.1],
+                                           'weight_start': [1, 0, 2, 0, 0.1] ,'weight_others': [1, 0, 2, 0, 0.1],
+                                           'weight_and': [6, 4, 15, 0, 0.1],
+                                           'chain_strength': [7, 4, 15, 0, 0.1], 'annealing_time': [99, 10, 10000, 1, 10]
                                           },
                  T=1, T_min=0.00001, alpha=0.9, max_iter=50
                 ):
@@ -274,7 +274,8 @@ class SA(object):
         self.max_iter = max_iter
         self.cost_= 0
         self.sol_= {key: val[0] for key, val in params.items()}
-        self.sols = []
+        self.sols = None
+        self.costs = None
         self.energies = {}
         self.sampler = None
     def param_generator(self):
@@ -288,19 +289,22 @@ class SA(object):
             if self.params[j][1]==self.params[j][2]: # in order to fix a certain parameter
                 sol_ = self.params[j][1]
             else:
-                 if self.params[j][3] == 0: # if the parameter isn't an integer
-                     while True:
-                         sol_ += (0.5-random.random()) # new parameter between -0.5,0.5
-                         if sol_ > self.params[j][1] and sol_ < self.params[j][2]: #see if the new parameter is within range
-                             break
-                 else:
-                     list_of_integers = list(range(self.params[j][1], self.params[j][2]))
-                     list_of_integers.append(self.params[j][2])
-                     while True:
-                         sol_ += random.choice([1, -1])
-                         if sol_ in list_of_integers:
-                             break
+                if self.params[j][3] == 0: # if the parameter isn't an integer
+                    while True:
+                        sol_ = self.sol_[j]
+                        sol_ += (0.5-random.random())*self.params[j][4] # new parameter between -0.5,0.5
+                        if sol_ > self.params[j][1] and sol_ < self.params[j][2]: #see if the new parameter is within range
+                            break
+                else:
+                    list_of_integers = list(range(self.params[j][1], self.params[j][2]))
+                    list_of_integers.append(self.params[j][2])
+                    while True:
+                        sol_ = self.sol_[j]
+                        sol_ += random.choice([1, -1])*self.params[j][4]
+                        if sol_ in list_of_integers:
+                            break
             self.sol_[j] = sol_
+            
     def global_sampler(self, embedding):
         fixed_sampler = FixedEmbeddingComposite(
             DWaveSampler(solver={'lower_noise': True, 'qpu': True}), embedding
@@ -332,7 +336,7 @@ class SA(object):
             #print(error)
         self.cost_ = error
         ## memory improvement
-        garbages = gc.collect()
+        #garbages = gc.collect()
        
     def accept_prob(self,c_old,c_new):
         """Computes the acceptance probability.
@@ -345,8 +349,13 @@ class SA(object):
         else:
             ap = np.exp(-(c_new-c_old)/self.T)
         return ap
+    
+    def reset(self):
+        """Restarts the annealing and discards the current solutions/costs collected"""
+        self.costs = None    
+    
     def anneal(self):
-	###########
+	###########Perform this only the first time object is instanciated
         G = RectGridGraph(self.graph_size, self.graph_size) #create the graph only once
         net_start = [(0,0)]
         net_end = [(0,0)]
@@ -354,14 +363,18 @@ class SA(object):
         dwave_sampler = DWaveSampler(solver={'lower_noise': True, 'qpu': True})
         A = dwave_sampler.edgelist
         embedding, _ = find_embedding_minorminer(Q, A) #create the embedding only once
-    #define global sampler here
+        #define global sampler here
         fixed_sampler = self.global_sampler(embedding)
+        if self.costs is None:
+            self.cost_function(G, fixed_sampler)
+            best_sol = self.sol_
+            cost_old = self.cost_
+            self.costs = [cost_old]
+            self.sols = [best_sol]
+        else:
+            cost_old = self.costs[-1]
+            best_sol = self.sols[-1]
 	###########
-        self.cost_function(G, fixed_sampler)
-        best_sol = self.sol_
-        cost_old = self.cost_
-        self.costs = [cost_old]
-        self.sols = [best_sol]
         while self.T > self.T_min:
             ## memory improvement
             #garbages = gc.collect()
