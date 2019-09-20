@@ -1,6 +1,8 @@
 import numpy as np
 import networkx as nx
+import dimod
 from .graph_utils import get_paths_for_nodes
+from .quantum_utils import get_all_min_energy
 from itertools import combinations_with_replacement as cwr
 
 
@@ -9,6 +11,7 @@ class NetList(object):
         '''
             net_list: a sequence of (source, targets) pairs where source is
                       a single node and targets is a sequence of nodes
+                      e.g. [[1, [2, 3]], [4, [6]], [7, [8, 9, 10]]
         '''
         # TODO verify that no source node appears in the set of target nodes
         # and vice versa
@@ -31,6 +34,14 @@ class NetList(object):
             i not in self.all_target_nodes for i in self.all_source_nodes
         ])
 
+    def map(self, map_):
+        ''' map_: a dict for mapping node names, returns a new Netlist obj '''
+        net_list = [
+            [map_[source], [map_[target] for target in target_list]]
+            for source, target_list in self.net_list
+        ]
+        return NetList(net_list)
+
 
 class Route(object):
     def __init__(self, arch_graph, netlist, edge_list, node_map, pos=None):
@@ -40,7 +51,8 @@ class Route(object):
             edge_list: a set/sequence of edges from arch_graph used for
                        routing, forming route_subgraph
             node_map: a dict, keys are netlist graph node names and values are
-                      corresponding arch_graph/route_subgraph nodes.
+                      corresponding arch_graph/route_subgraph nodes
+                      (essentially the placement).
             pos: a dict, keys are arch_graph nodes and values are coordinates,
                  used in draw() only.
         '''
@@ -54,18 +66,15 @@ class Route(object):
         self.node_map = node_map
         self.pos = pos
 
-        self.all_source_nodes = {
-            self.node_map[i] for i in self.netlist.all_source_nodes
-        }
-        self.all_target_nodes = {
-            self.node_map[i] for i in self.netlist.all_target_nodes
-        }
+        self.placed_netlist = self.netlist.map(self.node_map)
+        self.all_source_nodes = self.placed_netlist.all_source_nodes
+        self.all_target_nodes = self.placed_netlist.all_target_nodes
 
         self.route_subgraph = self.arch_graph.edge_subgraph(self.edge_list)
 
         # draw properties: node size, source color, target color, route width,
         #                  route color, default edge style,
-        self.dp = dict(ns=900, sc='y', tc='c', rw='8', rc='r', ds='dotted')
+        self.dp = dict(ns=900, sc='y', tc='c', rw=8, rc='r', ds='dotted')
 
     def draw_arch(self, ax=None):
         nx.draw_networkx(
@@ -84,7 +93,7 @@ class Route(object):
         # edges not used in the routing graph
         inactive_edges = self.arch_graph.edges - self.edge_list
 
-        # Draw routing subgrpah
+        # Draw routing subgraph
         nx.draw_networkx_edges(
             self.arch_graph, edgelist=self.edge_list, pos=self.pos,
             width=self.dp['rw'], node_size=self.dp['ns'],
@@ -244,10 +253,13 @@ def get_qubo(
     n = len(net_end)
 
     Q = {}
-    for ind1, ind2 in cwr(range(arch_graph.number_of_edges()), 2):
-        Q[(f'y{ind1}', f'y{ind2}')] = 0
+    # move away from y1, y2, etc as var names and do y(1, 2), y(3, 'i1'), etc
+    # to make the edge-variable correspondence clear. Use w(1, 2)(3, 'i1')
+    # format for auxiliary/'and' variables.
+    for edge1, edge2 in cwr(arch_graph.edges(), 2):
+        Q[(f'y{edge1}', f'y{edge2}')] = 0
 
-    Starting_node = []
+    starting_node = []
     end_nodes = {}
     other_nodes = {}
     for item_1 in net_end:
@@ -256,45 +268,45 @@ def get_qubo(
         if item_1 not in net_end and item_1 not in net_start:
             other_nodes[item_1] = []
 
-    # iterate over numerical edge labels
-    for num_lab, edge_pair in enumerate(arch_graph.edges):
-        Q[(f'y{num_lab}', f'y{num_lab}')] = 1 * w_obj
-        # According to Arash, VPR defines nets as having one source and
-        # multiple targets
+    # variables are defined for each edge, iterate over numerical edge labels
+    # and store what edge is connected to which type of node.
+    for edge in arch_graph.edges:
+        Q[(f'y{edge}', f'y{edge}')] = 1 * w_obj
         # Starting node
-        if edge_pair[0] in net_start or edge_pair[1] in net_start:
-            Starting_node.append(num_lab)
+        if edge[0] in net_start or edge[1] in net_start:
+            starting_node.append(edge)
         # end node
-        if edge_pair[0] in net_end:
-            end_nodes[edge_pair[0]].append(num_lab)
-        if edge_pair[1] in net_end:
-            end_nodes[edge_pair[1]].append(num_lab)
+        if edge[0] in net_end:
+            end_nodes[edge[0]].append(edge)
+        if edge[1] in net_end:
+            end_nodes[edge[1]].append(edge)
         # other nodes
-        if edge_pair[0] in other_nodes:
-            other_nodes[edge_pair[0]].append(num_lab)
-        if edge_pair[1] in other_nodes:
-            other_nodes[edge_pair[1]].append(num_lab)
+        # dangling non-terminal nodes are irrelevant
+        if edge[0] in other_nodes:  # and arch_graph.degree(edge[0]) > 1:
+            other_nodes[edge[0]].append(edge)
+        if edge[1] in other_nodes:  # and arch_graph.degree(edge[1]) > 1:
+            other_nodes[edge[1]].append(edge)
 
     # each item is a list of (numerical) edge labels ending in the node
-    for node, num_lab_list in end_nodes.items():
+    for node, edge_list in end_nodes.items():
         # for each pair of edges
-        for i, j in cwr(num_lab_list, 2):
+        for i, j in cwr(edge_list, 2):
             if i == j:
                 # ######Removing end node edges from the objective
-                Q[(f'y{i}', f'y{j}')] += -1 * w_obj
+                # Q[(f'y{i}', f'y{j}')] += -1 * w_obj
                 # #############################
                 Q[(f'y{i}', f'y{j}')] += -1 * w_target
             else:
                 Q[(f'y{i}', f'y{j}')] += 2 * w_target
 
     # iterate over numerical edge labels
-    for node, num_lab_list in other_nodes.items():
-        for i, j in cwr(num_lab_list, 2):
+    for node, edge_list in other_nodes.items():
+        for i, j in cwr(edge_list, 2):
             if i == j:
                 Q[(f'y{i}', f'y{j}')] += w_nonterm
             else:
                 Q[(f'y{i}', f'y{j}')] += -2 * w_nonterm  # 2
-        for i, j, k in cwr(num_lab_list, 3):
+        for i, j, k in cwr(edge_list, 3):
             if i != j and j != k and i != k:
                 if (f'w{i}{j}', f'y{k}') not in Q:
                     Q[(f'w{i}{j}', f'y{k}')] = 0
@@ -310,14 +322,31 @@ def get_qubo(
                     Q[(f'w{i}{j}', f'w{i}{j}')] = 0
                 Q[(f'w{i}{j}', f'w{i}{j}')] += 3 * w_and
 
-    # Starting_node is a list of numerical labels and not a dict
-    for i, j in cwr(Starting_node, 2):
+    # starting_node is a list of numerical labels and not a dict
+    for i, j in cwr(starting_node, 2):
         if i == j:
             # ######Removing starting node edges from the objective
-            Q[(f'y{i}', f'y{j}')] += -1*w_obj
+            # Q[(f'y{i}', f'y{j}')] += -1*w_obj
             # #############################
             Q[(f'y{i}', f'y{j}')] += -(2 * n - 1) * w_source
         else:
             Q[(f'y{i}', f'y{j}')] += 2 * w_source
 
     return Q
+
+
+def edge_list_from_qubo_answer_dict(ans):
+    # eval converts the string "(1, 2)" or "(3, 'i1')" to tuples
+    return [eval(i[1:]) for i in ans if ans[i] == 1 and i[0] == 'y']
+
+
+class DimodExact(object):
+    solver = None
+
+    @classmethod
+    def solve(cls, Q):
+        if cls.solver is None:
+            cls.solver = dimod.ExactSolver()
+        response = cls.solver.sample_qubo(Q)
+        min_energy_sols, _ = get_all_min_energy(response)
+        return [edge_list_from_qubo_answer_dict(i) for i in min_energy_sols]
