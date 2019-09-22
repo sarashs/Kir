@@ -104,7 +104,7 @@ def create_qubo(G, net_start, net_end, params={'weight_objective': 1, 'weight_en
         for i,j in cwr(num_lab_list,2):
             if i==j:
                 #######Removing end node edges from the objective
-                Q[(f'y{i}',f'y{j}')]+=-1*w1 
+                #Q[(f'y{i}',f'y{j}')]+=-1*w1 
                 ##############################
                 Q[(f'y{i}',f'y{j}')]+=-1*w2
             else:
@@ -116,6 +116,7 @@ def create_qubo(G, net_start, net_end, params={'weight_objective': 1, 'weight_en
     w_and=params['weight_and']
     
     # iterate over numerical edge labels
+
     for node, num_lab_list in other_nodes.items():
         for i,j in cwr(num_lab_list,2):
             if i==j:
@@ -127,23 +128,25 @@ def create_qubo(G, net_start, net_end, params={'weight_objective': 1, 'weight_en
                 if (f'w{i}{j}',f'y{k}') not in Q:
                     Q[(f'w{i}{j}',f'y{k}')]=0
                 Q[(f'w{i}{j}',f'y{k}')]+=6*w3 #2
-                Q[(f'y{i}',f'y{j}')]+=1*w_and #2
+                Q[(f'y{i}',f'y{j}')]+=6*w_and #2
                 if (f'w{i}{j}',f'y{i}') not in Q:
                     Q[(f'w{i}{j}',f'y{i}')]=0
-                Q[(f'w{i}{j}',f'y{i}')]+=-2*w_and
+                Q[(f'w{i}{j}',f'y{i}')]+=-12*w_and
                 if (f'w{i}{j}',f'y{j}') not in Q:
                     Q[(f'w{i}{j}',f'y{j}')]=0
-                Q[(f'w{i}{j}',f'y{j}')]+=-2*w_and
+                Q[(f'w{i}{j}',f'y{j}')]+=-12*w_and
                 if (f'w{i}{j}',f'w{i}{j}') not in Q:
                     Q[(f'w{i}{j}',f'w{i}{j}')]=0
-                Q[(f'w{i}{j}',f'w{i}{j}')]+=3*w_and            
+                Q[(f'w{i}{j}',f'w{i}{j}')]+=18*w_and
+
+                
     #constraint on the starting node
     w4=params['weight_start']
     # Starting_node is a list of numerical labels and not a dict
     for i,j in cwr(Starting_node,2):
         if i==j:
             #######Removing starting node edges from the objective
-            Q[(f'y{i}',f'y{j}')]+=-1*w1 
+            #Q[(f'y{i}',f'y{j}')]+=-1*w1 
             ##############################
             Q[(f'y{i}',f'y{j}')]+=-(2*n-1)*w4
         else:
@@ -327,13 +330,15 @@ class SA(object):
             anneal_params['num_reads'] = 10000
         #print([anneal_params['annealing_time'], anneal_params['num_reads']])
         for i in range(int(np.ceil(self.graph_size**2/2))): #we trying number of sets of start and end nodes
+            net_start = random.choice(list(G.nodes))
+            net_end = random.choice(list(G.nodes))
             while net_start == net_end:
                 net_start = random.choice(list(G.nodes))
                 net_end = random.choice(list(G.nodes))
             Q=create_qubo(G, [net_start], [net_end], Q_params)
             q_response = optimize_qannealer(fixed_sampler, Q, anneal_params)
             error -= is_this_an_answer(q_response.samples()[0], G, net_start, net_end)#a function to compare the best_q_answer vs the correct answer
-            #print(error)
+        #print(error)
         self.cost_ = error
         ## memory improvement
         #garbages = gc.collect()
@@ -367,7 +372,7 @@ class SA(object):
         fixed_sampler = self.global_sampler(embedding)
         if self.costs is None:
             self.cost_function(G, fixed_sampler)
-            best_sol = self.sol_
+            best_sol = self.sol_.copy()
             cost_old = self.cost_
             self.costs = [cost_old]
             self.sols = [best_sol]
