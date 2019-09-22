@@ -16,7 +16,8 @@ import dimod
 #for garbace collection
 import gc
 
-from qpr.quantum_utils import find_embedding_minorminer
+from qpr.quantum_utils import find_embedding_minorminer, get_all_min_energy
+from qpr.notebook_utils import make_ax_grid
 
 ####
 def save_data(data_dict,name):
@@ -163,23 +164,6 @@ def optimize_qannealer(sampler, Q, params={'chain_strength': 7, 'annealing_time'
         Q, chain_strength=params['chain_strength'], annealing_time=params['annealing_time'], auto_scale=True, num_reads=params['num_reads']
     )
     return response
-
-#####
-
-def make_ax_grid(n, ax_h=4, ax_w=6, ncols=4):
-    nrows = int(np.ceil(n / ncols))
-    fig_h = nrows * ax_h
-    fig_w = ncols * ax_w
-    return plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_w, fig_h))
-
-#####
-
-def get_all_min_energy(sample_set):
-    min_energy = np.min(sample_set.record.energy)
-    # use .record since it is slicing friendly, this returns a 2d-array-like recarray
-    records = sample_set.record[sample_set.record.energy == min_energy]
-    # make dicts out of each answer using the original var names (i.e. sample_set.variables)
-    return [dict(zip(sample_set.variables, i.sample)) for i in records], min_energy
 
 #####
 

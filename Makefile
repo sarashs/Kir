@@ -15,4 +15,4 @@ help:
 	@echo "clean - Remove artifacts"
 	@echo "clean-pycache - Remove Python artifacts"
 	@echo "lint - Check style"
-	@echo "test - run pytest"
+	@echo "test - Run pytest"
