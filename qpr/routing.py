@@ -1,4 +1,5 @@
 import numpy as np
+import re
 import networkx as nx
 import dimod
 from .graph_utils import get_paths_for_nodes
@@ -69,6 +70,11 @@ class Route(object):
         self.placed_netlist = self.netlist.map(self.node_map)
         self.all_source_nodes = self.placed_netlist.all_source_nodes
         self.all_target_nodes = self.placed_netlist.all_target_nodes
+        # non-terminal nodes in arch_graph
+        self.all_nt_nodes = (
+            self.arch_graph.nodes - self.all_source_nodes -
+            self.all_target_nodes
+        )
 
         self.route_subgraph = self.arch_graph.edge_subgraph(self.edge_list)
 
@@ -85,11 +91,6 @@ class Route(object):
         if axes is None:
             axes = [None] * 3
 
-        # non-terminal nodes in arch_graph
-        nt_nodes = (
-            self.arch_graph.nodes - self.all_source_nodes -
-            self.all_target_nodes
-        )
         # edges not used in the routing graph
         inactive_edges = self.arch_graph.edges - self.edge_list
 
@@ -136,10 +137,11 @@ class Route(object):
         # specifying nodelist determines which nodes get a circle, but it
         # displays *all* nodes labels. To suppress that, labels=custom_labs is
         # required.
-        custom_labs = {i: i for i in nt_nodes}
+        custom_labs = {i: i for i in self.all_nt_nodes}
         nx.draw_networkx(
-            self.arch_graph, nodelist=nt_nodes, pos=self.pos, edgelist=[],
-            labels=custom_labs, node_size=self.dp['ns'], ax=axes[0],
+            self.arch_graph, nodelist=self.all_nt_nodes, pos=self.pos,
+            edgelist=[], labels=custom_labs, node_size=self.dp['ns'],
+            ax=axes[0],
         )
 
         if draw_netlist:
@@ -350,3 +352,67 @@ class DimodExact(object):
         response = cls.solver.sample_qubo(Q)
         min_energy_sols, _ = get_all_min_energy(response)
         return [edge_list_from_qubo_answer_dict(i) for i in min_energy_sols]
+
+
+# TODO these verify_xx and qubo_violation funtions can be combined and made
+# more efficient..
+def verify_and(ans_dict):
+    and_vars = [i for i in ans_dict if i[0] == 'w']
+    var_pairs = [re.match(r'w(\(.*, .*\))(\(.*, .*\))', i) for i in and_vars]
+    var_pairs = [
+        (f'y{i.group(1)}', f'y{i.group(2)}') for i in var_pairs
+        if i is not None
+    ]
+    broken = [
+        (w12, v1, v2, f'{ans_dict[v1]}x{ans_dict[v2]}<->{ans_dict[w12]}')
+        for (v1, v2), w12 in zip(var_pairs, and_vars)
+        if ans_dict[v1] * ans_dict[v2] != ans_dict[w12]
+    ]
+    if len(and_vars) == 0:
+        return 0, None
+    return len(broken) / len(and_vars), broken
+
+
+def verify_term(ans_dict, node_list):
+    ''' node_list: a set of terminal (source or target) nodes
+    '''
+    active_dict = {k: v for k, v in ans_dict.items() if v == 1}
+    edges = edge_list_from_qubo_answer_dict(active_dict)
+    counts = np.zeros(len(node_list))
+    for i, n in enumerate(node_list):
+        for e in edges:
+            if n in e:
+                counts[i] += 1
+    return (counts != 1).sum() / counts.size, zip(node_list, counts)
+
+
+def verify_nonterm(ans_dict, node_list):
+    active_dict = {k: v for k, v in ans_dict.items() if v == 1}
+    edges = edge_list_from_qubo_answer_dict(active_dict)
+    counts = np.zeros(len(node_list))
+    for i, n in enumerate(node_list):
+        for e in edges:
+            if n in e:
+                counts[i] += 1
+    return (
+        ((counts != 0) & (counts != 2)).sum() / counts.size,
+        list(zip(node_list, counts))
+    )
+
+
+def qubo_violation(ans_dict, source_list, target_list, nonterm_list):
+    active_dict = {k: v for k, v in ans_dict.items() if v == 1}
+    active_edges = edge_list_from_qubo_answer_dict(active_dict)
+    num_edges = len([i for i in ans_dict if i[0] == 'y'])
+    assert num_edges > 0
+
+    obj_score = len(active_edges) / num_edges
+    and_score, _ = verify_and(ans_dict)
+    source_score, _ = verify_term(ans_dict, source_list)
+    target_score, _ = verify_term(ans_dict, target_list)
+    nt_score, _ = verify_nonterm(ans_dict, nonterm_list)
+
+    return {
+        'obj': obj_score, 'and': and_score, 's': source_score,
+        't': target_score, 'nt': nt_score
+    }
