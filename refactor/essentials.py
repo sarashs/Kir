@@ -159,10 +159,15 @@ def create_qubo(G, net_start, net_end, params={'weight_objective': 1, 'weight_en
 
 #####
 
-def optimize_qannealer(sampler, Q, params={'chain_strength': 7, 'annealing_time': 99, 'num_reads': 10000}):
-    response = sampler.sample_qubo(
-        Q, chain_strength=params['chain_strength'], annealing_time=params['annealing_time'], auto_scale=True, num_reads=params['num_reads']
-    )
+def optimize_qannealer(sampler, Q, params={'chain_strength': 7, 'annealing_time': 99, 'num_reads': 10000, 'anneal_schedule': None}):
+    if params['anneal_schedule'] is None:
+        response = sampler.sample_qubo(
+                   Q, chain_strength=params['chain_strength'], annealing_time=params['annealing_time'], auto_scale=True, num_reads=params['num_reads']
+        )
+    else:
+        response = sampler.sample_qubo(
+                   Q, chain_strength=params['chain_strength'], anneal_schedule=params['anneal_schedule'], auto_scale=True, num_reads=params['num_reads']
+        )
     return response
 
 #####
@@ -226,6 +231,7 @@ class SA(object):
         maximum number of iterations per temperature.
     params : dictionary 
         format: params= {'param_#':[init_value, min, max, integer_flag, parameter_change_weight],...}
+        format params for anneal schedule: [init_schedule(list), min_max_list, parameter_change_weight_list=[S_weight, time_weight]]
     
     Attributes
     --------------
@@ -244,15 +250,17 @@ class SA(object):
         'weight_objective', 'weight_end', 'weight_start', 'weight_others',
         'weight_and'
     ]
-    list_of_anneal_params = ['num_reads', 'annealing_time', 'chain_strength']
+    list_of_anneal_params = ['num_reads', 'annealing_time', 'chain_strength', 'anneal_schedule'] 
 
     def __init__(self, graph_size, params={'weight_objective': [1, 0, 2, 0, 0.1], 'weight_end': [1, 0, 2, 0, 0.1],
                                            'weight_start': [1, 0, 2, 0, 0.1] ,'weight_others': [1, 0, 2, 0, 0.1],
                                            'weight_and': [6, 4, 15, 0, 0.1],
-                                           'chain_strength': [7, 4, 15, 0, 0.1], 'annealing_time': [99, 10, 10000, 1, 10]
+                                           'chain_strength': [7, 4, 15, 0, 0.1], 'annealing_time': [99, 10, 10000, 1, 10], 
+                                           'anneal_schedule': None
                                           },
                  T=1, T_min=0.00001, alpha=0.9, max_iter=50
                 ):
+        assert ((params['anneal_schedule'] is None) or (params['annealing_time'] is None)),"anneal schedule or time? pick one!"
         self.graph_size = graph_size
         self.params = params
         self.T = T 
@@ -260,7 +268,12 @@ class SA(object):
         self.alpha = alpha
         self.max_iter = max_iter
         self.cost_= 0
-        self.sol_= {key: val[0] for key, val in params.items()}
+        self.sol_= {}
+        for key, val in params.items():
+            if val is None:
+                self.sol_[key] = None
+            else:
+                self.sol_[key] = val[0]
         self.sols = None
         self.costs = None
         self.energies = {}
@@ -273,23 +286,53 @@ class SA(object):
         """
         for j in self.sol_.keys():
             sol_ = self.sol_[j]
-            if self.params[j][1]==self.params[j][2]: # in order to fix a certain parameter
-                sol_ = self.params[j][1]
+            if sol_ is None:
+                pass
             else:
-                if self.params[j][3] == 0: # if the parameter isn't an integer
-                    while True:
-                        sol_ = self.sol_[j]
-                        sol_ += (0.5-random.random())*self.params[j][4] # new parameter between -0.5,0.5
-                        if sol_ > self.params[j][1] and sol_ < self.params[j][2]: #see if the new parameter is within range
-                            break
+                if j in ['anneal_schedule']: #[[0.0, 0.0],[time_1, b], [time_3, 1.0]], [[[0, 0], [0, 0]],[[0.0, 100],[0.0,0.8]], [[80, 999],[0.8,1.0]], [[1, 1],[1000, 1100]], [0.1, 1]]
+                    #params[j][0] current params list, params[j][1] min_max list, params[j][2] param change weight list
+                    schedule_length = len(self.params[j][0])
+                    for i in range(1, schedule_length):
+                        #For the S part
+                        if self.params[j][1][i][1][0] == self.params[j][1][i][1][1]:
+                            sol_[i][1] = self.params[j][1][i][1][0]
+                        else:
+                            while True:
+                                sol_[i][1] = self.sol_[j][i][1]
+                                sol_[i][1] += (0.5-random.random()) * self.params[j][2][1] # new parameter between -0.5,0.5
+                                if sol_[i][1] >= self.params[j][1][i][1][0] and sol_[i][1] <= self.params[j][1][i][1][1] and sol_[i][1] >= sol_[i-1][1]: #see if the new parameter is within range
+                                    break                        
+                      
+                            #For the time part
+                        if self.params[j][1][i][0][0] == self.params[j][1][i][0][1]:
+                            sol_[i][0] = self.params[j][1][i][0][0]
+                        else:
+                            list_of_integers = list(range(self.params[j][1][i][0][0], self.params[j][1][i][0][1]))
+                            list_of_integers.append(self.params[j][1][i][0][1])
+                            while True:
+                                sol_[i][0] = self.sol_[j][i][0]
+                                sol_[i][0] += random.choice([1, -1])*self.params[j][2][0]
+                                if sol_[i][0] in list_of_integers and sol_[i][0] > sol_[i-1][0] :
+                                    break
+                                
                 else:
-                    list_of_integers = list(range(self.params[j][1], self.params[j][2]))
-                    list_of_integers.append(self.params[j][2])
-                    while True:
-                        sol_ = self.sol_[j]
-                        sol_ += random.choice([1, -1])*self.params[j][4]
-                        if sol_ in list_of_integers:
-                            break
+                    if self.params[j][1]==self.params[j][2]: # in order to fix a certain parameter
+                        sol_ = self.params[j][1]
+                    else:
+                        if self.params[j][3] == 0: # if the parameter isn't an integer
+                            while True:
+                                sol_ = self.sol_[j]
+                                sol_ += (0.5-random.random())*self.params[j][4] # new parameter between -0.5,0.5
+                                if sol_ > self.params[j][1] and sol_ < self.params[j][2]: #see if the new parameter is within range
+                                    break
+                        else:
+                            list_of_integers = list(range(self.params[j][1], self.params[j][2]))
+                            list_of_integers.append(self.params[j][2])
+                            while True:
+                                sol_ = self.sol_[j]
+                                sol_ += random.choice([1, -1])*self.params[j][4]
+                                if sol_ in list_of_integers:
+                                    break
             self.sol_[j] = sol_
             
     def global_sampler(self, embedding):
@@ -308,8 +351,11 @@ class SA(object):
                 Q_params[i] = self.sol_[i]
             elif i in self.list_of_anneal_params:
                 anneal_params[i] = self.sol_[i]
-        anneal_params['num_reads'] = int(np.floor(999000/anneal_params['annealing_time']))
-        #999000 due to Dwave's own bug
+        if anneal_params['annealing_time'] is None:
+            anneal_params['num_reads'] = int(np.floor(999000/anneal_params['anneal_schedule'][-1][0]))
+        else:
+            anneal_params['num_reads'] = int(np.floor(999000/anneal_params['annealing_time']))
+            #999000 due to Dwave's own bug
         if anneal_params['num_reads'] > 10000:
             anneal_params['num_reads'] = 10000
         #print([anneal_params['annealing_time'], anneal_params['num_reads']])
