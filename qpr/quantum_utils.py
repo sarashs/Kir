@@ -8,14 +8,15 @@ def longest_chain_in_embed(e):
     return np.max([len(i) for i in e.values()])
 
 
-def find_embedding_minorminer(Q, A, num_tries=100):
+def find_embedding_minorminer(Q, A, num_tries=100, print_output_flag = False):
     best_embedding = None
     best_chain_len = np.inf
 
     step = int(np.ceil(num_tries / 10))
     for i in range(num_tries):
-        if i % step == 0:
-            print(f'try {i+1} / {num_tries}')
+        if print_output_flag is True:
+            if i % step == 0:
+                print(f'try {i+1} / {num_tries}')
 
         e = minorminer.find_embedding(Q, A)
         if e:  # to guarantee an embedding is produced
