@@ -291,7 +291,7 @@ class SA(object):
         self : object
         """
         for j in self.sol_.keys():
-            sol_ = self.sol_[j]
+            sol_ = deepcopy(self.sol_[j])
             if sol_ is None:
                 pass
             else:
@@ -320,7 +320,7 @@ class SA(object):
                                 sol_[i][0] += random.choice([1, -1])*self.params[j][2][0]
                                 if sol_[i][0] in list_of_integers and sol_[i][0] > sol_[i-1][0] :
                                     break
-                                
+                    self.sol_[j] = deepcopy(sol_)              
                 else:
                     if self.params[j][1]==self.params[j][2]: # in order to fix a certain parameter
                         sol_ = self.params[j][1]
@@ -339,7 +339,7 @@ class SA(object):
                                 sol_ += random.choice([1, -1])*self.params[j][4]
                                 if sol_ in list_of_integers:
                                     break
-            self.sol_[j] = sol_
+                    self.sol_[j] = sol_
             
     def global_sampler(self):
         fixed_sampler = FixedEmbeddingComposite(
@@ -409,13 +409,13 @@ class SA(object):
         fixed_sampler = self.global_sampler()
         if self.costs is None:
             self.cost_function(G, fixed_sampler)
-            best_sol = self.sol_.copy()
+            best_sol = deepcopy(self.sol_)
             cost_old = self.cost_
             self.costs = [cost_old]
             self.sols = [best_sol]
         else:
-            cost_old = self.costs[-1]
-            best_sol = self.sols[-1]
+            cost_old = deepcopy(self.costs[-1])
+            best_sol = deepcopy(self.sols[-1])
 	###########
         while self.T > self.T_min:
             ## memory improvement
@@ -433,12 +433,12 @@ class SA(object):
                 cost_new = self.cost_
                 ap = self.accept_prob(cost_old, cost_new)
                 if ap > random.random():
-                    best_sol = self.sol_.copy()
+                    best_sol = deepcopy(self.sol_)
                     cost_old = cost_new
                     #print(best_sol)
                 else:
                     self.cost_ = cost_old
-                    self.sol_ = best_sol.copy()
+                    self.sol_ = deepcopy(best_sol)
                 i += 1
             self.costs.append(cost_old)
             self.sols.append(best_sol)
