@@ -258,7 +258,7 @@ class SA(object):
                                            'chain_strength': [7, 4, 15, 0, 0.1], 'annealing_time': [99, 10, 10000, 1, 10], 
                                            'anneal_schedule': None
                                           },
-                 T=1, T_min=0.00001, alpha=0.9, max_iter=50
+                 T=1, T_min=0.00001, alpha=0.9, max_iter=50, embedding_pickle=None
                 ):
         assert ((params['anneal_schedule'] is None) or (params['annealing_time'] is None)),"anneal schedule or time? pick one!"
         self.graph_size = graph_size
@@ -269,6 +269,12 @@ class SA(object):
         self.max_iter = max_iter
         self.cost_= 0
         self.sol_= {}
+        if embedding_pickle is None:
+            self.embedding = None
+        else:
+            with open(embedding_pickle, 'rb') as f:
+                pickle_data = pickle.load(f)
+            self.embedding, _, _, _ = pickle_data[:4]
         for key, val in params.items():
             if val is None:
                 self.sol_[key] = None
@@ -335,9 +341,9 @@ class SA(object):
                                     break
             self.sol_[j] = sol_
             
-    def global_sampler(self, embedding):
+    def global_sampler(self):
         fixed_sampler = FixedEmbeddingComposite(
-            DWaveSampler(solver={'lower_noise': True, 'qpu': True}), embedding
+            DWaveSampler(solver={'lower_noise': True, 'qpu': True}), self.embedding
             )
         return fixed_sampler
     def cost_function(self, G, fixed_sampler):
@@ -397,9 +403,10 @@ class SA(object):
         Q=create_qubo(G, net_start, net_end) #in order to produce the embedding we will run this once
         dwave_sampler = DWaveSampler(solver={'lower_noise': True, 'qpu': True})
         A = dwave_sampler.edgelist
-        embedding, _ = find_embedding_minorminer(Q, A) #create the embedding only once
+        if self.embedding is None:
+            self.embedding, _ = find_embedding_minorminer(Q, A) #create the embedding only once
         #define global sampler here
-        fixed_sampler = self.global_sampler(embedding)
+        fixed_sampler = self.global_sampler()
         if self.costs is None:
             self.cost_function(G, fixed_sampler)
             best_sol = self.sol_.copy()

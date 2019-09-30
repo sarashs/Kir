@@ -14,9 +14,8 @@ def find_embedding_minorminer(Q, A, num_tries=100, print_output_flag = False):
 
     step = int(np.ceil(num_tries / 10))
     for i in range(num_tries):
-        if print_output_flag is True:
-            if i % step == 0:
-                print(f'try {i+1} / {num_tries}')
+        if print_output_flag and i % step == 0:
+            print(f'try {i+1} / {num_tries}')
 
         e = minorminer.find_embedding(Q, A)
         if e:  # to guarantee an embedding is produced
@@ -70,9 +69,30 @@ def cached_find_embedding(Q, A, qpu_id, probname, num_tries=100, hurry=False):
         return old_probname, old_chain_len
 
     # now that we're not in a rush, try the embedding one more time!
-    new_embedding, new_chain_len = find_embedding_minorminer(
-        Q, A, num_tries=num_tries
-    )
+    if num_tries > 1000:
+        num_num_tries = int(np.floor(num_tries/1000))
+        rem_num_tries = num_tries%1000
+        for i in range(0, num_num_tries):
+            new_embedding, new_chain_len = find_embedding_minorminer(
+                Q, A, num_tries=1000
+            )
+            if i == 0 or new_chain_len < old_new_chain_len:
+                old_new_chain_len = new_chain_len
+                old_new_embedding = new_embedding
+                new_fname = f'{qpu_id}__{probname}__chainlen{old_new_chain_len}__try{(i+1)*1000}.pickle'
+                pickle_data = (
+                    new_embedding, new_chain_len, Q, A, probname, qpu_id, VERSION
+                )
+                with open(new_fname, 'wb') as f:
+                    pickle.dump(pickle_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+                    
+        new_embedding, new_chain_len = find_embedding_minorminer(
+            Q, A, num_tries=rem_num_tries
+        )
+    else:
+        new_embedding, new_chain_len = find_embedding_minorminer(
+            Q, A, num_tries=num_tries
+        )
     if not flist or new_chain_len < old_chain_len:
         pickle_data = (
             new_embedding, new_chain_len, Q, A, probname, qpu_id, VERSION
