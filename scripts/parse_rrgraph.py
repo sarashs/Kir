@@ -6,8 +6,10 @@ import numpy as np
 from qpr.vtr_utils import parse_rr_graph_xml
 # from qpr.routing import NetList, Route
 
+np.random.seed(1234)
+
 fpath = Path('sharedgraphstuff/rrgraph.xml')
-graph, node_dict = parse_rr_graph_xml(fpath)
+graph, node_dict, _, _ = parse_rr_graph_xml(fpath)
 
 # find the nodes with high degrees and print them
 node_list1 = np.array(graph.nodes)
@@ -28,10 +30,26 @@ print(min_deg, max_deg)
 
 node_subset = list(node_list1[inds1])
 print(f"neighbors: {list(graph.to_undirected(as_view=True)['240'])}")
-node_subset += list(graph.to_undirected(as_view=True)['240'])
+neigh240 = list(graph.to_undirected(as_view=True)['241'])
+pos = dict()
+for nid in node_subset + neigh240:
+    x_jitter, y_jitter = .5 * np.random.random(2)
+    pos[nid] = (
+        node_dict[nid]['posx'] + x_jitter,
+        node_dict[nid]['posy'] + y_jitter
+    )
+print([
+    node_dict[k]['type'] for i in neigh240
+    for j in graph[i] for k in graph[j]
+])
+print('------')
+print([node_dict[i]['type'] for i in neigh240 for j in graph[i]])
 
 # plot the graphs
 fig, ax = plt.subplots(nrows=1, ncols=2)
-nx.draw_networkx(graph, ax=ax[0])
-nx.draw_networkx(graph.subgraph(node_subset), ax=ax[1])
+nx.draw_networkx(graph, ax=ax[1])
+nx.draw_networkx(
+    graph.subgraph(node_subset + neigh240), pos=pos, ax=ax[0]
+)
+ax[0].grid(True)
 plt.show()
