@@ -252,3 +252,35 @@ def pos_rr_graph(
     assert not nodes_left
 
     return pos
+
+
+def draw_rr_graph(
+    graph, node_dict, grid_dict, fig, ax,
+    node_cols=dict(
+        SOURCE='r', SINK='tab:blue', CHANX='y', CHANY='y', IPIN='g', OPIN='m'
+    ),
+    **kwargs
+):
+    '''
+        The kwargs are passed on to pos_rr_graph()
+    '''
+    pos = pos_rr_graph(node_dict, grid_dict, **kwargs)
+
+    draw_subgraph = graph.subgraph(list(pos.keys()))
+    for i in node_cols:
+        draw_nodes = [j for j in node_dict if node_dict[j]['type'] == i]
+        nx.draw_networkx(
+            draw_subgraph, nodelist=draw_nodes, edgelist=[], pos=pos,
+            node_color=node_cols[i],
+        )
+    draw_nodes = [i for i in node_dict if node_dict[i]['is_clock']]
+    nx.draw_networkx(
+        draw_subgraph, nodelist=draw_nodes, edgelist=[], pos=pos,
+        node_color='tab:brown',
+    )
+
+    nx.draw_networkx_edges(draw_subgraph, pos=pos)
+    # nx.draw_networkx(draw_subgraph, pos=pos, ax=ax)
+    ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
+    ax.grid(True)
+    fig.tight_layout()
