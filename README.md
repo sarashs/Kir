@@ -1,2 +1,2 @@
 # Kir
-Pre incorporation works
+An attempt to do FPGA place and rout on Dwave quantum annealer!
