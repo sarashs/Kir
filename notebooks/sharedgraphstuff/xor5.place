@@ -1,0 +1,12 @@
+Netlist_File: xor5.net Netlist_ID: SHA256:e8d46cc11322cb4473c8b51ce9adf4e9c474fab80b15fdba537f39671d051dae
+Array size: 3 x 3 logic blocks
+
+#block name	x	y	subblk	block number
+#----------	--	--	------	------------
+xor5		1	1	0	#0
+out:xor5	1	2	0	#1
+a		0	1	4	#2
+b		2	1	6	#3
+c		1	2	5	#4
+d		1	2	6	#5
+e		0	1	7	#6

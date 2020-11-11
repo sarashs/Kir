@@ -1,0 +1,58 @@
+Placement_File: xor5.place Placement_ID: SHA256:68b1026cdda04569bb7096fdb3486ef2640d994758f0231ad96a399cd97ed692
+Array size: 3 x 3 logic blocks.
+
+Routing:
+
+Net 0 (d)
+
+Node:	313	SOURCE (1,2)  Pad: 19  Switch: 0
+Node:	396	  OPIN (1,2)  Pad: 19  Switch: 2
+Node:	540	 CHANX (1,1)  Track: 2  Switch: 1
+Node:	243	  IPIN (1,1)  Pin: 0   clb.I[0] Switch: 0
+Node:	240	  SINK (1,1)  Class: 0  Switch: -1
+
+
+Net 1 (b)
+
+Node:	433	SOURCE (2,1)  Pad: 19  Switch: 0
+Node:	517	  OPIN (2,1)  Pad: 19  Switch: 2
+Node:	548	 CHANY (1,1)  Track: 2  Switch: 1
+Node:	244	  IPIN (1,1)  Pin: 1   clb.I[1] Switch: 0
+Node:	240	  SINK (1,1)  Class: 0  Switch: -1
+
+
+Net 2 (e)
+
+Node:	22	SOURCE (0,1)  Pad: 22  Switch: 0
+Node:	113	  OPIN (0,1)  Pad: 22  Switch: 2
+Node:	545	 CHANY (0,1)  Track: 3  Switch: 1
+Node:	250	  IPIN (1,1)  Pin: 7   clb.I[7] Switch: 0
+Node:	240	  SINK (1,1)  Class: 0  Switch: -1
+
+
+Net 3 (c)
+
+Node:	310	SOURCE (1,2)  Pad: 16  Switch: 0
+Node:	384	  OPIN (1,2)  Pad: 16  Switch: 2
+Node:	538	 CHANX (1,1)  Track: 0  Switch: 1
+Node:	247	  IPIN (1,1)  Pin: 4   clb.I[4] Switch: 0
+Node:	240	  SINK (1,1)  Class: 0  Switch: -1
+
+
+Net 4 (a)
+
+Node:	13	SOURCE (0,1)  Pad: 13  Switch: 0
+Node:	77	  OPIN (0,1)  Pad: 13  Switch: 2
+Node:	543	 CHANY (0,1)  Track: 1  Switch: 1
+Node:	246	  IPIN (1,1)  Pin: 3   clb.I[3] Switch: 0
+Node:	240	  SINK (1,1)  Class: 0  Switch: -1
+
+
+Net 5 (xor5)
+
+Node:	241	SOURCE (1,1)  Class: 1  Switch: 0
+Node:	284	  OPIN (1,1)  Pin: 41   clb.O[1] Switch: 2
+Node:	546	 CHANY (1,1)  Track: 0  Switch: 2
+Node:	541	 CHANX (1,1)  Track: 3  Switch: 1
+Node:	320	  IPIN (1,2)  Pad: 0  Switch: 0
+Node:	294	  SINK (1,2)  Pad: 0  Switch: -1
